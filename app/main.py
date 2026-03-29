@@ -7,8 +7,9 @@ from app.agents.briefing import generate_briefing, answer_followup
 from app.agents.story_tracker import track_story
 from app.agents.translator import translate_article
 from app.agents.summarizer import summarize_article
-from app.models.schemas import UserProfile
+from app.models.schemas import UserProfile, VideoRequest
 from app.services.news_fetcher import fetch_top_headlines, search_news
+from app.services.video_studio import generate_news_video
 
 app = FastAPI(title="ET AI News Experience", version="1.0.0")
 
@@ -85,3 +86,8 @@ class SummarizeRequest(BaseModel):
 def summarize(req: SummarizeRequest):
     summary = summarize_article(req.title, req.content, req.style)
     return {"summary": summary}
+
+
+@app.post("/api/video/generate")
+def video_generate(req: VideoRequest):
+    return generate_news_video(req).model_dump()

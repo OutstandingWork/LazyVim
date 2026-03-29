@@ -11,6 +11,7 @@ from app.agents.story_tracker import track_story
 from app.agents.translator import translate_article, LANGUAGE_MAP
 from app.agents.summarizer import summarize_article
 from app.services.news_fetcher import fetch_top_headlines, search_news
+from app.services.video_studio import generate_news_video
 
 
 def format_source_refs(source_ids, sources):
@@ -737,7 +738,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigate",
-    ["My Newsroom", "Intelligence Briefing", "Story Arc Tracker", "Vernacular News", "Smart Summarizer"],
+    ["My Newsroom", "Intelligence Briefing", "Story Arc Tracker", "Vernacular News", "Smart Summarizer", "AI Video Studio"],
     index=0,
     format_func=lambda x: {
         "My Newsroom": "My Newsroom",
@@ -745,6 +746,7 @@ page = st.sidebar.radio(
         "Story Arc Tracker": "Story Arc Tracker",
         "Vernacular News": "Vernacular News",
         "Smart Summarizer": "Smart Summarizer",
+        "AI Video Studio": "AI Video Studio",
     }[x],
 )
 
@@ -761,7 +763,7 @@ st.sidebar.markdown("""
 <div class="sidebar-footer">
     <div>Built for ET AI Hackathon 2026</div>
     <div>Problem Statement 8</div>
-    <div class="tech-stack">Groq &middot; Gemini &middot; NewsAPI</div>
+    <div class="tech-stack">Groq &middot; Gemini &middot; SerpApi &middot; FFmpeg</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1384,3 +1386,160 @@ elif page == "Smart Summarizer":
             <div class="empty-desc">Get the same news from different perspectives</div>
         </div>
         """, unsafe_allow_html=True)
+
+
+# ============================================================
+# PAGE 6: AI VIDEO STUDIO
+# ============================================================
+elif page == "AI Video Studio":
+    st.markdown("""
+    <div class="page-header">
+        <h1>AI News Video Studio</h1>
+        <p>Turn a business news story into a short narrated video with source-matched visuals</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    source_option = st.radio("Source", ["Search Topic", "Paste Article"], horizontal=True, label_visibility="collapsed")
+    duration = st.select_slider("Duration", options=[60, 90, 120], format_func=lambda x: f"{x}s")
+    tone = st.selectbox("Tone", ["Breaking News", "Explainer", "Investor Update"])
+    captions = st.toggle("Burn captions into video", value=True)
+
+    video_query = ""
+    video_title = ""
+    video_content = ""
+
+    if source_option == "Search Topic":
+        col_search, col_btn = st.columns([3, 1])
+        with col_search:
+            video_query = st.text_input(
+                "Topic",
+                placeholder="e.g. RBI policy outlook, Reliance retail strategy, AI startup funding India",
+                label_visibility="collapsed",
+                key="video_query",
+            )
+        with col_btn:
+            search_btn = st.button("Find Sources", type="primary", use_container_width=True, key="video_search_btn")
+
+        if search_btn and video_query:
+            with st.spinner("Fetching related source coverage..."):
+                st.session_state["video_search_results"] = search_news(video_query, page_size=5)
+
+        search_results = st.session_state.get("video_search_results", [])
+        if search_results:
+            st.markdown('<div class="section-title">Source Coverage</div>', unsafe_allow_html=True)
+            for idx, article in enumerate(search_results, start=1):
+                st.markdown(f"""
+                <div class="news-card">
+                    <div class="card-title">S{idx}. {article.title}</div>
+                    <div class="card-meta">
+                        <span>{article.source}</span>
+                        <span class="dot"></span>
+                        <span>{article.published_at[:10] if article.published_at else ''}</span>
+                    </div>
+                    <div class="card-hook">{article.description or ''}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="empty-state">
+                <div class="empty-icon">&#127909;</div>
+                <div class="empty-title">Search a topic to build a source-backed video</div>
+                <div class="empty-desc">We will synthesize related coverage, extract visuals from article URLs, and render a narrated MP4</div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        video_title = st.text_input("Article title", placeholder="Enter article title", key="video_title")
+        video_content = st.text_area("Article content", height=220, placeholder="Paste article content here...", key="video_content")
+
+    generate_video = st.button("Generate Video", type="primary", use_container_width=True, key="generate_video")
+
+    if generate_video:
+        with st.spinner("Generating storyboard, matching visuals, and rendering video..."):
+            result = generate_news_video(
+                {
+                    "query": video_query if source_option == "Search Topic" else "",
+                    "title": video_title if source_option == "Paste Article" else "",
+                    "content": video_content if source_option == "Paste Article" else "",
+                    "duration_seconds": duration,
+                    "tone": tone,
+                    "include_captions": captions,
+                }
+            )
+            st.session_state["video_result"] = result.model_dump()
+
+    if "video_result" in st.session_state:
+        result = st.session_state["video_result"]
+        if result.get("status") != "ok":
+            st.error(result.get("error", "Video generation failed."))
+        else:
+            stat_cols = st.columns(4)
+            with stat_cols[0]:
+                st.markdown(f"""
+                <div class="stat-card">
+                    <div class="stat-value">{int(round(result.get('duration_seconds', 0)))}</div>
+                    <div class="stat-label">Seconds</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with stat_cols[1]:
+                st.markdown(f"""
+                <div class="stat-card">
+                    <div class="stat-value">{result.get('source_count', 0)}</div>
+                    <div class="stat-label">Sources Used</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with stat_cols[2]:
+                st.markdown(f"""
+                <div class="stat-card">
+                    <div class="stat-value">{len(result.get('scenes', []))}</div>
+                    <div class="stat-label">Scenes</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with stat_cols[3]:
+                assignment_count = len([item for item in result.get("visual_assignments", []) if item.get("image_path")])
+                st.markdown(f"""
+                <div class="stat-card">
+                    <div class="stat-value">{assignment_count}</div>
+                    <div class="stat-label">Source Images</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown('<div class="section-title">Preview</div>', unsafe_allow_html=True)
+            st.video(result["video_path"])
+            with open(result["video_path"], "rb") as video_file:
+                st.download_button(
+                    "Download MP4",
+                    data=video_file.read(),
+                    file_name=os.path.basename(result["video_path"]),
+                    mime="video/mp4",
+                    use_container_width=False,
+                )
+
+            with st.expander("Storyboard and visual matches", expanded=False):
+                scenes = result.get("scenes", [])
+                assignments = {item.get("scene_id"): item for item in result.get("visual_assignments", [])}
+                for scene in scenes:
+                    assignment = assignments.get(scene.get("scene_id"), {})
+                    st.markdown(f"""
+                    <div class="briefing-card">
+                        <div class="section-label">Scene {scene.get("scene_id")} &middot; {assignment.get("visual_type", "text_card")}</div>
+                        <div class="section-content"><strong>{scene.get("title", "")}</strong><br/>{scene.get("narration", "")}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.caption(
+                        f"{format_source_refs(scene.get('source_ids', []), result.get('sources', []))} | "
+                        f"Visual reason: {assignment.get('reason', 'n/a')}"
+                    )
+
+            with st.expander("Source articles", expanded=False):
+                for idx, source in enumerate(result.get("sources", []), start=1):
+                    st.markdown(f"""
+                    <div class="news-card">
+                        <div class="card-title">S{idx}. {source.get('title', '')}</div>
+                        <div class="card-meta">
+                            <span>{source.get('source', '')}</span>
+                            <span class="dot"></span>
+                            <span>{source.get('published_at', '')[:10]}</span>
+                        </div>
+                        <div class="card-hook">{source.get('description', '')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)

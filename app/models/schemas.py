@@ -139,3 +139,67 @@ class TranslatedArticle(BaseModel):
     translated_content: str
     language: str
     cultural_context: str = ""
+
+
+class ImageCandidate(BaseModel):
+    article_index: int = 1
+    source_url: str = ""
+    image_url: str = ""
+    local_path: str = ""
+    origin_type: str = "thumbnail"
+    alt_text: str = ""
+    width: int = 0
+    height: int = 0
+
+
+class VideoScene(BaseModel):
+    scene_id: int = 1
+    title: str = ""
+    narration: str = ""
+    on_screen_text: list[str] = Field(default_factory=list)
+    source_ids: list[int] = Field(default_factory=list)
+    preferred_visual_type: str = "source_image"
+    duration_seconds: float = 8.0
+
+
+class VideoScript(BaseModel):
+    title: str = ""
+    intro_hook: str = ""
+    scenes: list[VideoScene] = Field(default_factory=list)
+    closing_note: str = ""
+    source_summary: str = ""
+
+
+class SceneVisualAssignment(BaseModel):
+    scene_id: int = 1
+    visual_type: str = "text_card"
+    image_path: str = ""
+    article_index: int = 0
+    score: float = 0.0
+    reason: str = ""
+
+
+class VideoRequest(BaseModel):
+    query: str = ""
+    title: str = ""
+    content: str = ""
+    duration_seconds: int = 90
+    tone: str = "Breaking News"
+    language: str = "english"
+    include_captions: bool = True
+
+
+class VideoGenerationResult(BaseModel):
+    title: str = ""
+    topic: str = ""
+    duration_seconds: float = 0.0
+    video_path: str = ""
+    audio_path: str = ""
+    subtitle_path: str = ""
+    working_dir: str = ""
+    scenes: list[VideoScene] = Field(default_factory=list)
+    visual_assignments: list[SceneVisualAssignment] = Field(default_factory=list)
+    sources: list[Article] = Field(default_factory=list)
+    source_count: int = 0
+    status: str = "error"
+    error: str = ""

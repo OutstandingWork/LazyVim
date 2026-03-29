@@ -62,6 +62,10 @@ def search_news(query: str, page_size: int = 10, sort_by: str = "relevancy") -> 
         "gl": "IN",
     }
 
-    results = client.search(params)
+    try:
+        results = client.search(params)
+    except Exception:
+        return []
+
     articles = _parse_articles(results)
     return articles[:page_size]
